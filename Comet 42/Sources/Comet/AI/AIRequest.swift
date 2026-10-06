@@ -4,6 +4,8 @@ import Foundation
 nonisolated struct AIImage: Equatable, Hashable, Sendable {
     let data: Data
     let mimeType: String
+
+    var dataURL: String { "data:\(mimeType);base64,\(data.base64EncodedString())" }
 }
 
 nonisolated struct AIMessage: Equatable, Sendable {

@@ -40,6 +40,11 @@ final class AIBackends {
     private(set) var statuses: [AIBackend: BackendStatus] = [:]
     /// Codex publishes no catalog to `exec`, so its list is whatever the reader typed in Settings.
     var codexModels: [String] = []
+    /// The account's own Codex models, once the app-server has listed them.
+    private(set) var codexCatalog: [BackendModel] = []
+    @ObservationIgnored private var codexServer: CodexAppServer?
+    /// Set when the app-server could not start, so later requests go straight to `codex exec`.
+    @ObservationIgnored private var codexUsesExec = false
 
     let workspace: URL
 
@@ -54,8 +59,8 @@ final class AIBackends {
         switch backend {
         case .claude: return status(.claude).models
         case .codex:
-            return [BackendModel(id: "", name: "Codex Default")]
-                + codexModels.map { BackendModel(id: $0, name: $0) }
+            let listed = codexCatalog.isEmpty ? codexModels.map { BackendModel(id: $0, name: $0) } : codexCatalog
+            return [BackendModel(id: "", name: "Codex Default")] + listed
         }
     }
 
@@ -66,6 +71,10 @@ final class AIBackends {
             Task {
                 let status = await Self.probe(backend, workspace: workspace)
                 self.statuses[backend] = status
+                // The model list needs the app-server; it starts briefly, then idles out.
+                if backend == .codex, status.isReady, let executable = status.executable, !self.codexUsesExec {
+                    await self.codexServer(for: executable).refreshModels()
+                }
             }
         }
     }
@@ -95,9 +104,21 @@ final class AIBackends {
             return ClaudeCLIProvider(
                 executable: executable, model: choice.model, effort: effort, workspace: workspace)
         case .codex:
-            return CodexCLIProvider(
+            let exec = CodexCLIProvider(
                 executable: executable, model: choice.model, effort: effort, workspace: workspace)
+            guard !codexUsesExec else { return exec }
+            return CodexAppServerProvider(
+                server: codexServer(for: executable), fallback: exec, model: choice.model,
+                effort: effort, onFallback: { [weak self] in self?.codexUsesExec = true })
         }
+    }
+
+    private func codexServer(for executable: URL) -> CodexAppServer {
+        if let codexServer { return codexServer }
+        let server = CodexAppServer(executable: executable, workspace: workspace)
+        server.onModels = { [weak self] models in self?.codexCatalog = models }
+        codexServer = server
+        return server
     }
 
     // MARK: - Probing
@@ -109,10 +130,17 @@ final class AIBackends {
     nonisolated private static func probe(
         _ backend: AIBackend, workspace: URL
     ) async -> BackendStatus {
-        guard
-            let executable = await ExecutableLocator.locate(
+        // Test hook: `COMET_CODEX_PATH` / `COMET_CLAUDE_PATH` point the self-test at a stand-in CLI.
+        let override = ProcessInfo.processInfo.environment["COMET_\(backend.command.uppercased())_PATH"]
+            .map { URL(fileURLWithPath: $0) }
+        let located: URL?
+        if let override {
+            located = override
+        } else {
+            located = await ExecutableLocator.locate(
                 backend.command, extraHomePaths: backend.extraExecutablePaths)
-        else { return BackendStatus(phase: .notInstalled) }
+        }
+        guard let executable = located else { return BackendStatus(phase: .notInstalled) }
         let environment = ExecutableLocator.environment(running: executable)
         let versionResult = await CLIProcess.run(
             executable: executable, arguments: ["--version"], workspace: workspace,

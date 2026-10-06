@@ -357,7 +357,7 @@ private struct ModelsPage: View {
                 TextField("Extra models", text: $codexModelsText, prompt: Text("gpt-5.5, o4-mini"))
                     .onSubmit(save)
                     .onChange(of: codexModelsText) { save() }
-                Text("Codex doesn’t publish a model list. Add names here, separated by commas, to pick them.")
+                Text("Comet 42 lists your Codex account’s models automatically. Add names here, separated by commas, only if one is missing.")
                     .font(.caption).foregroundStyle(.secondary)
             }
         }

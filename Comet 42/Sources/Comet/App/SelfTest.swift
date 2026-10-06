@@ -56,7 +56,7 @@ enum SelfTest {
                 try? await Task.sleep(for: .milliseconds(100))
             }
             let status = backends.status(backend)
-            print("\(backend.title): \(status.summary) — \(status.models.map(\.id))")
+            print("\(backend.title): \(status.summary) — \(backends.models(for: backend).map(\.id))")
             let model = backend == .claude ? "haiku" : ""
             do {
                 let provider = try backends.provider(
