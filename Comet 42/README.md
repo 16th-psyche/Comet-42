@@ -12,7 +12,16 @@ Scripts/build-app.sh              # package "build/Comet 42.app" (icon, Info.pli
 Scripts/build-app.sh --install    # …and replace ~/Applications/"Comet 42.app"
 ```
 
-Add `codex` to the self-test (`--selftest codex`) to exercise the Codex CLI instead.
+Other self-tests:
+
+```sh
+.build/debug/Comet --selftest codex      # the Codex path (app-server, with exec fallback)
+.build/debug/Comet --selftest history    # history store: save, cap, reload, clear (offline)
+.build/debug/Comet --selftest updates    # version comparison, plus one GitHub lookup
+```
+
+To test without a real CLI, point Comet at a stand-in with `COMET_CODEX_PATH` or
+`COMET_CLAUDE_PATH`, for example `COMET_CODEX_PATH=/path/to/stub .build/debug/Comet --selftest codex`.
 
 ## README screenshots
 
@@ -25,6 +34,16 @@ hotkey and doesn't touch a running copy of the app, so it's safe to run while yo
 
 It prints `WINDOW <number>`. Capture that window with `screencapture -l <number> out.png`, and save
 both themes to `docs/screenshots/<shot>-dark.png` and `<shot>-light.png`.
+
+## Releasing
+
+1. Write the notes in `docs/releases/vX.Y.Z.md`. Start with `<!-- title: … -->` to set the
+   release title.
+2. Tag and push: `git tag vX.Y.Z && git push origin vX.Y.Z`.
+
+`.github/workflows/release.yml` then builds the Universal app, signs it with the certificate in the
+`SIGNING_P12_BASE64` and `SIGNING_P12_PASSWORD` secrets, and publishes the DMG, ZIP and
+checksums. `Scripts/release.sh X.Y.Z` builds the same files locally.
 
 ## Signing
 
