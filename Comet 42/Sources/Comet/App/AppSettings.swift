@@ -26,6 +26,9 @@ final class AppSettings {
         var panelTopLeft: [Double]?
         var remembersPanelPosition = true
         var textScale: Double = 1
+        var hasCompletedOnboarding = false
+        var keepsHistory = false
+        var checksForUpdates = true
 
         init() {}
 
@@ -51,6 +54,12 @@ final class AppSettings {
                 try c.decodeIfPresent(Bool.self, forKey: .remembersPanelPosition)
                 ?? d.remembersPanelPosition
             textScale = try c.decodeIfPresent(Double.self, forKey: .textScale) ?? d.textScale
+            // A saved blob without the flag predates onboarding: that reader is already set up.
+            hasCompletedOnboarding =
+                try c.decodeIfPresent(Bool.self, forKey: .hasCompletedOnboarding) ?? true
+            keepsHistory = try c.decodeIfPresent(Bool.self, forKey: .keepsHistory) ?? d.keepsHistory
+            checksForUpdates =
+                try c.decodeIfPresent(Bool.self, forKey: .checksForUpdates) ?? d.checksForUpdates
         }
     }
 
@@ -71,6 +80,10 @@ final class AppSettings {
     var panelTopLeft: [Double]? { didSet { save() } }
     var remembersPanelPosition: Bool { didSet { save() } }
     var textScale: Double { didSet { save() } }
+    var hasCompletedOnboarding: Bool { didSet { save() } }
+    /// Off by default: chats are kept on disk only once the reader opts in.
+    var keepsHistory: Bool { didSet { save() } }
+    var checksForUpdates: Bool { didSet { save() } }
 
     static let textScaleRange: ClosedRange<Double> = 0.85...1.6
     static let defaultPanelWidth: Double = 660
@@ -92,6 +105,9 @@ final class AppSettings {
         panelTopLeft = stored.panelTopLeft
         remembersPanelPosition = stored.remembersPanelPosition
         textScale = stored.textScale
+        hasCompletedOnboarding = stored.hasCompletedOnboarding
+        keepsHistory = stored.keepsHistory
+        checksForUpdates = stored.checksForUpdates
     }
 
     func stepTextScale(by delta: Double) {
@@ -119,6 +135,9 @@ final class AppSettings {
         stored.panelTopLeft = panelTopLeft
         stored.remembersPanelPosition = remembersPanelPosition
         stored.textScale = textScale
+        stored.hasCompletedOnboarding = hasCompletedOnboarding
+        stored.keepsHistory = keepsHistory
+        stored.checksForUpdates = checksForUpdates
         guard let data = try? JSONEncoder().encode(stored) else { return }
         UserDefaults.standard.set(data, forKey: Self.key)
     }

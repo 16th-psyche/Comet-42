@@ -37,6 +37,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var panel: CometPanelController!
     private var statusItem: NSStatusItem?
     private var settingsWindow: NSWindow?
+    private var onboardingWindow: NSWindow?
 
     private static let mainHotKeyID: UInt32 = 1
 
@@ -55,9 +56,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         installStatusItem()
         watcher.start()
         backends.refresh()
-        // Asked once here: prompting from the hotkey would steal focus and hide the panel.
-        if !Permissions.isAccessibilityTrusted { Permissions.ensureAccessibility() }
-        if !applyHotKey() {
+        // Asked once here (onboarding asks instead on a first run): a prompt from the hotkey would
+        // steal focus and hide the panel.
+        if settings.hasCompletedOnboarding, !Permissions.isAccessibilityTrusted {
+            Permissions.ensureAccessibility()
+        }
+        let registered = applyHotKey()
+        if !settings.hasCompletedOnboarding {
+            showOnboarding()
+        } else if !registered {
             hud.show(
                 "\(settings.hotKey.displayString) is taken by another app — pick one in Settings",
                 tone: .danger)
@@ -116,6 +123,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         menu.addItem(.separator())
         let settings = menu.addItem(withTitle: "Settings…", action: #selector(showSettingsAction), keyEquivalent: ",")
         settings.target = self
+        let welcome = menu.addItem(withTitle: "Welcome…", action: #selector(showOnboardingAction), keyEquivalent: "")
+        welcome.target = self
         let check = menu.addItem(withTitle: "Check AI Tools Again", action: #selector(recheck), keyEquivalent: "")
         check.target = self
         menu.addItem(.separator())
@@ -180,8 +189,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         settingsWindow?.orderFrontRegardless()
     }
 
+    @objc private func showOnboardingAction() {
+        showOnboarding()
+    }
+
+    private func showOnboarding() {
+        panel.hide()
+        if onboardingWindow == nil {
+            let view = OnboardingView(
+                controller: controller, hotKeys: hotKeys,
+                applyHotKey: { [weak self] in self?.applyHotKey() ?? false },
+                onFinish: { [weak self] tryIt in self?.finishOnboarding(tryIt: tryIt) })
+            let window = NSWindow(contentViewController: NSHostingController(rootView: view))
+            window.title = "Welcome to Comet 42"
+            window.styleMask = [.titled, .closable, .fullSizeContentView]
+            window.titlebarAppearsTransparent = true
+            window.titleVisibility = .hidden
+            window.isReleasedWhenClosed = false
+            window.delegate = self
+            window.center()
+            onboardingWindow = window
+        }
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate()
+        onboardingWindow?.makeKeyAndOrderFront(nil)
+        onboardingWindow?.orderFrontRegardless()
+    }
+
+    private func finishOnboarding(tryIt: Bool) {
+        settings.hasCompletedOnboarding = true
+        onboardingWindow?.close()
+        guard tryIt else { return }
+        Task { await controller.summon() }
+    }
+
     func windowWillClose(_ notification: Notification) {
-        guard (notification.object as? NSWindow) === settingsWindow else { return }
-        NSApp.setActivationPolicy(.accessory)
+        let closing = notification.object as? NSWindow
+        if closing === onboardingWindow {
+            // Closing the window is also an answer: it should not come back on every launch.
+            settings.hasCompletedOnboarding = true
+            onboardingWindow = nil
+        } else if closing !== settingsWindow {
+            return
+        }
+        // Back to menu-bar only once neither Settings nor onboarding is on screen.
+        let stillOpen = [settingsWindow, onboardingWindow].contains {
+            $0 != nil && $0 !== closing && $0?.isVisible == true
+        }
+        if !stillOpen { NSApp.setActivationPolicy(.accessory) }
     }
 }
