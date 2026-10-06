@@ -28,7 +28,9 @@ enum CometApp {
 }
 
 /// The composition root: the one owner of every long-lived object.
-final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDelegate,
+    NSMenuItemValidation
+{
     private let settings = AppSettings()
     private let hotKeys = HotKeyCenter()
     private let watcher = ClipboardWatcher()
@@ -135,6 +137,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
         editItem.submenu = edit
         main.addItem(editItem)
+
+        // ⌘W and ⌘M need a menu to live in: an accessory app has none of its own.
+        let windowItem = NSMenuItem()
+        let window = NSMenu(title: "Window")
+        let close = window.addItem(withTitle: "Close Window", action: #selector(closeKeyWindow(_:)), keyEquivalent: "w")
+        close.target = self
+        let minimize = window.addItem(withTitle: "Minimize", action: #selector(minimizeKeyWindow(_:)), keyEquivalent: "m")
+        minimize.target = self
+        windowItem.submenu = window
+        main.addItem(windowItem)
+        NSApp.windowsMenu = window
         NSApp.mainMenu = main
     }
 
@@ -191,6 +204,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     @objc private func openUpdatePage() {
         if case .available(_, let page) = updates.state { NSWorkspace.shared.open(page) }
+    }
+
+    /// The panel hides rather than closes; Settings and the welcome window close for real.
+    @objc private func closeKeyWindow(_ sender: Any?) {
+        guard let window = NSApp.keyWindow else { return }
+        if window is CometPanel {
+            panel.hide()
+        } else {
+            window.performClose(sender)
+        }
+    }
+
+    @objc private func minimizeKeyWindow(_ sender: Any?) {
+        NSApp.keyWindow?.performMiniaturize(sender)
+    }
+
+    /// Only the Window menu depends on a window; the menu-bar items target this delegate too.
+    func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        switch item.action {
+        case #selector(closeKeyWindow(_:)):
+            return NSApp.keyWindow != nil
+        case #selector(minimizeKeyWindow(_:)):
+            guard let window = NSApp.keyWindow else { return false }
+            return !(window is CometPanel) && window.styleMask.contains(.miniaturizable)
+        default:
+            return true
+        }
     }
 
     @objc private func openPanel() {

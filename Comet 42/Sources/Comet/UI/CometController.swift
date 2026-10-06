@@ -16,6 +16,8 @@ final class CometController {
     /// Polled only while missing: macOS posts nothing when the reader grants the permission.
     private(set) var accessibilityTrusted = Permissions.isAccessibilityTrusted
     @ObservationIgnored private var trustTimer: Timer?
+    /// The selection being read while the panel is already on screen.
+    @ObservationIgnored private var captureTask: Task<Void, Never>?
 
     @ObservationIgnored private let watcher: ClipboardWatcher
     @ObservationIgnored private let hud: HUDController
@@ -87,41 +89,75 @@ final class CometController {
     func toggle() {
         guard let panel else { return }
         if panel.isVisible {
+            captureTask?.cancel()
             panel.hide()
             return
         }
         Task { await summon() }
     }
 
+    /// The panel shows at once; the selection is read beside it and lands as a chip moments later.
     func summon() async {
         guard !isCapturing, let panel else { return }
-        isCapturing = true
-        defer { isCapturing = false }
         notice = nil
         let front = NSWorkspace.shared.frontmostApplication
         let isOwnApp = front?.bundleIdentifier == Bundle.main.bundleIdentifier
 
-        // Read before the borrowed ⌘C can touch the pasteboard, and before the panel takes focus.
+        // Read before the borrowed ⌘C can touch the pasteboard.
         let copiedAt = watcher.lastChangeAt
         let imageIsFresh = watcher.isFresh
         let clipboardImage = ClipboardImage.read()
-        var selection: String?
-        if !isOwnApp {
-            selection = await SelectionReader.selection(in: front)
-            watcher.acknowledgeOwnChange(keepingDate: copiedAt)
-        }
 
         let idle = Date().timeIntervalSince(session.lastActivity) > Self.resumeWindow
-        let newSelection = selection != nil && selection != conversationSelection
-        if !session.isRunning, idle || newSelection || session.turns.isEmpty {
-            startNewChat()
-        }
+        if !session.isRunning, idle || session.turns.isEmpty { startNewChat() }
         if !isOwnApp, let front { session.sourceApp = front }
         refreshAccessibilityTrust()
-        if let selection { session.setSelection(selection) }
         stage(clipboardImage, fresh: imageIsFresh)
         session.lastActivity = Date()
+
+        guard !isOwnApp, let front else {
+            panel.show()
+            return
+        }
+        isCapturing = true
         panel.show()
+        let task = Task { [weak self] in
+            let selection = await SelectionReader.selection(in: front)
+            guard let self else { return }
+            self.watcher.acknowledgeOwnChange(keepingDate: copiedAt)
+            self.isCapturing = false
+            guard !Task.isCancelled, let selection else { return }
+            self.adoptSelection(selection, from: front)
+        }
+        captureTask = task
+        await task.value
+        captureTask = nil
+    }
+
+    /// A different selection means a different subject: the old chat is put away, but anything
+    /// the reader typed or attached while it was being read is kept.
+    private func adoptSelection(_ selection: String, from app: NSRunningApplication) {
+        if selection != conversationSelection, !session.turns.isEmpty, !session.isRunning {
+            let draft = session.draft
+            let images = session.images
+            let offered = session.offeredImage
+            startNewChat()
+            session.draft = draft
+            session.images = images
+            session.offeredImage = offered
+            session.sourceApp = app
+        }
+        session.setSelection(selection)
+    }
+
+    /// Asking before the selection arrives would send the question without it, so it waits.
+    private func afterCapture(_ action: @escaping () -> Void) -> Bool {
+        guard isCapturing, let captureTask else { return false }
+        Task {
+            await captureTask.value
+            action()
+        }
+        return true
     }
 
     private func stage(_ image: StagedImage?, fresh: Bool) {
@@ -222,6 +258,7 @@ final class CometController {
     // MARK: - Asking
 
     func send() {
+        if afterCapture({ [weak self] in self?.send() }) { return }
         let question = session.draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !session.isRunning, !question.isEmpty || session.hasContext else { return }
         let fallback = session.images.isEmpty ? "Explain this." : "Describe this image."
@@ -234,6 +271,7 @@ final class CometController {
     }
 
     func run(_ preset: Preset) {
+        if afterCapture({ [weak self] in self?.run(preset) }) { return }
         guard !session.isRunning else { return }
         // With nothing staged, a preset works on the latest answer, so presets chain.
         let target =

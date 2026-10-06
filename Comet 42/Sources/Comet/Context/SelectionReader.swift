@@ -82,6 +82,39 @@ enum AccessibilityText {
         return false
     }
 
+    /// Whether the app's ⌘C menu item is enabled; nil when its menu can't be read.
+    /// Found by shortcut, not title, so it works in every language.
+    static func copyIsEnabled(in app: NSRunningApplication) -> Bool? {
+        let application = AXUIElementCreateApplication(app.processIdentifier)
+        AXUIElementSetMessagingTimeout(application, timeout)
+        var bar: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(application, kAXMenuBarAttribute as CFString, &bar)
+            == .success, let bar, CFGetTypeID(bar) == AXUIElementGetTypeID()
+        else { return nil }
+        guard let item = copyItem(in: bar as! AXUIElement, depth: 0) else { return nil }
+        var enabled: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(item, kAXEnabledAttribute as CFString, &enabled) == .success
+        else { return nil }
+        return (enabled as? Bool) ?? (enabled as? NSNumber)?.boolValue
+    }
+
+    /// Menu bar → menu bar item → menu → item: three levels is where ⌘C always lives.
+    private static func copyItem(in element: AXUIElement, depth: Int) -> AXUIElement? {
+        guard depth <= 3 else { return nil }
+        var children: CFTypeRef?
+        AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &children)
+        for child in (children as? [AXUIElement]) ?? [] {
+            var key: CFTypeRef?
+            var modifiers: CFTypeRef?
+            AXUIElementCopyAttributeValue(child, kAXMenuItemCmdCharAttribute as CFString, &key)
+            AXUIElementCopyAttributeValue(child, kAXMenuItemCmdModifiersAttribute as CFString, &modifiers)
+            // Modifier bits 0 mean ⌘ alone; ⇧⌘C and ⌥⌘C are other commands.
+            if (key as? String) == "C", (modifiers as? NSNumber)?.intValue == 0 { return child }
+            if let found = copyItem(in: child, depth: depth + 1) { return found }
+        }
+        return nil
+    }
+
     /// Browsers have no `AXSelectedText`: web selection exists only as an opaque marker range.
     private static func webSelection(in element: AXUIElement) -> String? {
         var range: CFTypeRef?
@@ -114,6 +147,8 @@ enum SelectionReader {
         case .text(let found):
             text = found
         case .empty, .noFocusedElement:
+            // A disabled Copy means nothing is selected, and ⌘C would only play the alert sound.
+            guard AccessibilityText.copyIsEnabled(in: app) != false else { return nil }
             // A borrowed ⌘C synthesises a keystroke into somebody's app, so it is never the first try.
             text = await copySelection(from: app)
         }
@@ -130,10 +165,11 @@ enum SelectionReader {
         let pasteboard = NSPasteboard.general
         let snapshot = PasteboardSnapshot(pasteboard)
         defer { snapshot.restore(to: pasteboard) }
-        await KeySynth.waitForModifierRelease()
-        KeySynth.command(CGKeyCode(kVK_ANSI_C))
-        // A copy lands well inside a second; past that the app was never going to answer.
-        for _ in 0..<32 {
+        // Sent to the app itself: it arrives even while the panel has key focus, and the reader's
+        // still-held hotkey modifiers cannot join the chord.
+        KeySynth.command(CGKeyCode(kVK_ANSI_C), toPid: app.processIdentifier)
+        // A copy lands within a few frames; half a second is the most an answer is worth waiting.
+        for _ in 0..<20 {
             try? await Task.sleep(for: .milliseconds(25))
             guard pasteboard.changeCount != snapshot.changeCount else { continue }
             return pasteboard.string(forType: .string)
@@ -173,8 +209,8 @@ enum KeySynth {
     /// Tags our own synthesised keystrokes, so they can be told apart from the reader's.
     private static let eventTag: Int64 = 0x434D_4554
 
-    static func command(_ key: CGKeyCode) {
-        press(key, flags: .maskCommand)
+    static func command(_ key: CGKeyCode, toPid pid: pid_t? = nil) {
+        press(key, flags: .maskCommand, toPid: pid)
     }
 
     /// A key with no modifiers, such as → to collapse a selection to its end.
@@ -182,7 +218,7 @@ enum KeySynth {
         press(key, flags: [])
     }
 
-    private static func press(_ key: CGKeyCode, flags: CGEventFlags) {
+    private static func press(_ key: CGKeyCode, flags: CGEventFlags, toPid pid: pid_t? = nil) {
         // A private source: the reader's still-held hotkey modifiers must not join this chord.
         let source = CGEventSource(stateID: .privateState)
         guard let down = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: true),
@@ -192,8 +228,13 @@ enum KeySynth {
         up.flags = flags
         down.setIntegerValueField(.eventSourceUserData, value: eventTag)
         up.setIntegerValueField(.eventSourceUserData, value: eventTag)
-        down.post(tap: .cghidEventTap)
-        up.post(tap: .cghidEventTap)
+        if let pid {
+            down.postToPid(pid)
+            up.postToPid(pid)
+        } else {
+            down.post(tap: .cghidEventTap)
+            up.post(tap: .cghidEventTap)
+        }
     }
 
     /// The hotkey fires on key-down, while ⌥ is still held; a ⌘C sent then can arrive as ⌥⌘C.
