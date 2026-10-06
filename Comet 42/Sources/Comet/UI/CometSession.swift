@@ -74,6 +74,8 @@ final class CometSession {
     var offeredImage: StagedImage?
     var turns: [ChatTurn] = []
     var draft = ""
+    /// Names this conversation in history, so saving again updates its entry instead of adding one.
+    var conversationID = UUID()
     var model: ModelChoice
     var lastActivity = Date()
     @ObservationIgnored var sourceApp: NSRunningApplication?
@@ -119,5 +121,6 @@ final class CometSession {
         offeredImage = nil
         turns = []
         draft = ""
+        conversationID = UUID()
     }
 }

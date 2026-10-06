@@ -43,7 +43,8 @@ private final class DemoDelegate: NSObject, NSApplicationDelegate {
         backends.refresh()
         controller = CometController(
             settings: settings, presets: PresetStore(supportDirectory: support),
-            backends: backends, watcher: ClipboardWatcher(), hud: HUDController())
+            backends: backends,
+            history: ChatHistoryStore(supportDirectory: support), watcher: ClipboardWatcher(), hud: HUDController())
         panel = CometPanelController(controller: controller)
         controller.panel = panel
 

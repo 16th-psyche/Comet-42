@@ -154,6 +154,7 @@ private struct GeneralPage: View {
     @State private var hotKeyFailed = false
     @State private var launchesAtLogin = LaunchAtLogin.isEnabled
     @State private var loginError: String?
+    @State private var confirmsClear = false
 
     private var settings: AppSettings { controller.settings }
 
@@ -214,6 +215,29 @@ private struct GeneralPage: View {
                     detail: "A picture copied in the last 2 minutes is attached when you open the panel. "
                         + "Older ones are offered as a chip.",
                     isOn: $settings.autoAttachClipboardImage)
+            }
+
+            Section {
+                DescribedToggle(
+                    title: "Keep chat history",
+                    detail: "Saves your last \(ChatHistoryStore.limit) chats on this Mac (text only, never images). Open them with History (⌘Y) in the panel.",
+                    isOn: $settings.keepsHistory)
+                LabeledContent {
+                    Button("Clear History…") { confirmsClear = true }
+                        .disabled(controller.history.chats.isEmpty)
+                } label: {
+                    Text(controller.history.chats.isEmpty
+                        ? "No saved chats"
+                        : "\(controller.history.chats.count) saved chat\(controller.history.chats.count == 1 ? "" : "s")")
+                        .foregroundStyle(.secondary)
+                }
+            } header: {
+                Text("History")
+            }
+            .confirmationDialog("Delete all saved chats?", isPresented: $confirmsClear) {
+                Button("Clear History", role: .destructive) { controller.history.clear() }
+            } message: {
+                Text("This can’t be undone.")
             }
 
             Section("In the panel") {

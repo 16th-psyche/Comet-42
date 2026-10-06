@@ -12,6 +12,7 @@ struct CometView: View {
     @State private var bottomHeight: CGFloat = 0
     @State private var transcriptHeight: CGFloat = 0
     @State private var searchIndex = 0
+    @State private var showsHistory = false
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorSchemeContrast) private var contrast
 
@@ -490,6 +491,17 @@ struct CometView: View {
                     .accessibilityLabel("Notice: \(notice)")
             }
             Spacer(minLength: 8)
+            if settings.keepsHistory {
+                FooterButton(title: "History", keys: "⌘Y", palette: palette) { showsHistory.toggle() }
+                    .keyboardShortcut("y", modifiers: .command)
+                    .accessibilityLabel("Chat history")
+                    .popover(isPresented: $showsHistory, arrowEdge: .top) {
+                        HistoryList(history: controller.history) { chat in
+                            showsHistory = false
+                            controller.openSaved(chat)
+                        }
+                    }
+            }
             FooterButton(title: "New", keys: "⌘N", palette: palette, action: controller.startNewChat)
                 .keyboardShortcut("n", modifiers: .command)
                 .accessibilityLabel("New chat")
@@ -901,5 +913,51 @@ private struct ModelMenu: View {
         let choice = controller.session.model
         return controller.backends.models(for: choice.backend).first { $0.id == choice.model }?.name
             ?? (choice.model.isEmpty ? choice.backend.title : choice.model)
+    }
+}
+
+/// Recent chats, newest first; selecting one reopens it in the panel.
+private struct HistoryList: View {
+    let history: ChatHistoryStore
+    let onOpen: (SavedChat) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Recent Chats")
+                .font(.headline)
+                .padding(.horizontal, 14)
+                .padding(.top, 12)
+                .padding(.bottom, 6)
+            if history.chats.isEmpty {
+                Text("Chats you finish appear here.")
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, minHeight: 80)
+            } else {
+                List {
+                    ForEach(history.chats) { chat in
+                        Button {
+                            onOpen(chat)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(chat.title).lineLimit(1)
+                                Text(chat.date, format: .relative(presentation: .named))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .contextMenu {
+                            Button("Delete", role: .destructive) { history.delete(id: chat.id) }
+                        }
+                        .accessibilityAction(named: "Delete") { history.delete(id: chat.id) }
+                    }
+                }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+            }
+        }
+        .frame(width: 340, height: 360)
     }
 }

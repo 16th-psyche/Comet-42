@@ -50,7 +50,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         backends.codexModels = settings.codexModels
         controller = CometController(
             settings: settings, presets: PresetStore(supportDirectory: support),
-            backends: backends, watcher: watcher, hud: hud)
+            backends: backends,
+            history: ChatHistoryStore(supportDirectory: support), watcher: watcher, hud: hud)
         panel = CometPanelController(controller: controller)
         controller.panel = panel
         controller.openSettings = { [weak self] in self?.showSettings() }

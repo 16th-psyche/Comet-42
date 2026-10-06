@@ -2,7 +2,50 @@ import AppKit
 
 /// `Comet --selftest [codex]`: drives the real CLI providers from a terminal, no UI involved.
 enum SelfTest {
+    /// `Comet --selftest history`: the history store's save, cap, reload and clear, offline.
+    static func historyCheck() -> Bool {
+        let folder = FileManager.default.temporaryDirectory.appending(path: "Comet-history-check")
+        try? FileManager.default.removeItem(at: folder)
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        var failures: [String] = []
+        func expect(_ ok: Bool, _ what: String) { if !ok { failures.append(what) } }
+
+        let settings = AppSettings()
+        settings.persists = false
+        let store = ChatHistoryStore(supportDirectory: folder)
+        expect(store.chats.isEmpty, "starts empty")
+        let turns = [
+            ChatTurn(role: .user, display: "First question", prompt: "p"),
+            ChatTurn(role: .assistant, display: "An answer", prompt: "")
+        ]
+        let id = UUID()
+        store.save(id: id, turns: turns)
+        store.save(id: id, turns: turns + [ChatTurn(role: .user, display: "More", prompt: "p")])
+        expect(store.chats.count == 1, "saving the same chat twice keeps one entry")
+        store.save(id: UUID(), turns: [ChatTurn(role: .user, display: "No answer yet", prompt: "")])
+        expect(store.chats.count == 1, "a chat without an answer is not saved")
+        for index in 0..<60 {
+            store.save(id: UUID(), turns: [
+                ChatTurn(role: .user, display: "Q\(index)", prompt: ""),
+                ChatTurn(role: .assistant, display: "A", prompt: "")
+            ])
+        }
+        expect(store.chats.count == ChatHistoryStore.limit, "capped at \(ChatHistoryStore.limit)")
+        expect(store.chats.first?.title == "Q59", "newest first")
+        let reloaded = ChatHistoryStore(supportDirectory: folder)
+        expect(reloaded.chats.count == ChatHistoryStore.limit, "reloads from disk")
+        reloaded.clear()
+        expect(!FileManager.default.fileExists(atPath: folder.appending(path: "history.json").path),
+               "clear deletes the file")
+        print(failures.isEmpty ? "history: all checks passed" : "history FAILED: " + failures.joined(separator: "; "))
+        try? FileManager.default.removeItem(at: folder)
+        return failures.isEmpty
+    }
+
     static func run() {
+        if CommandLine.arguments.contains("history") {
+            exit(historyCheck() ? 0 : 1)
+        }
         let backend: AIBackend = CommandLine.arguments.contains("codex") ? .codex : .claude
         Task {
             let support = FileManager.default.temporaryDirectory.appending(path: "Comet-selftest")

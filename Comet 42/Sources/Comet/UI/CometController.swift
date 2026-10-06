@@ -8,6 +8,7 @@ final class CometController {
     let settings: AppSettings
     let presets: PresetStore
     let backends: AIBackends
+    let history: ChatHistoryStore
     let session: CometSession
     private(set) var isCapturing = false
     /// A one-line message under the composer, for problems that are not one turn's failure.
@@ -46,11 +47,12 @@ final class CometController {
 
     init(
         settings: AppSettings, presets: PresetStore, backends: AIBackends,
-        watcher: ClipboardWatcher, hud: HUDController
+        history: ChatHistoryStore, watcher: ClipboardWatcher, hud: HUDController
     ) {
         self.settings = settings
         self.presets = presets
         self.backends = backends
+        self.history = history
         self.watcher = watcher
         self.hud = hud
         session = CometSession(model: settings.chatModel)
@@ -200,6 +202,16 @@ final class CometController {
         }
     }
 
+    /// Reopens a saved chat to read or continue; its original selection is gone, so no Replace.
+    func openSaved(_ chat: SavedChat) {
+        guard !session.isRunning else { return }
+        startNewChat()
+        session.conversationID = chat.id
+        session.turns = chat.turns.map(\.chatTurn)
+        session.sourceApp = nil
+        session.lastActivity = Date()
+    }
+
     func startNewChat() {
         session.reset()
         session.model = settings.chatModel
@@ -327,6 +339,9 @@ final class CometController {
                     if $0.display.isEmpty { $0.error = "The model returned nothing." }
                 }
                 Self.announce(self.session.turns.last?.error ?? "Answer ready")
+                if self.settings.keepsHistory {
+                    self.history.save(id: self.session.conversationID, turns: self.session.turns)
+                }
             } catch {
                 guard let self, !(error is CancellationError) else { return }
                 self.updateLastAssistant {
