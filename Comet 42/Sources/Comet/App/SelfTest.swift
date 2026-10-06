@@ -46,6 +46,23 @@ enum SelfTest {
         if CommandLine.arguments.contains("history") {
             exit(historyCheck() ? 0 : 1)
         }
+        if CommandLine.arguments.contains("updates") {
+            let cases: [(String, String, Bool)] = [
+                ("1.1.0", "1.0.0", true), ("1.10.0", "1.9.2", true), ("1.0.0", "1.0.0", false),
+                ("1.0", "1.0.0", false), ("1.0.1", "1.0", true), ("0.9.9", "1.0.0", false)
+            ]
+            let failed = cases.filter { UpdateChecker.isVersion($0.0, newerThan: $0.1) != $0.2 }
+            print(failed.isEmpty ? "updates: version comparison passed" : "updates FAILED: \(failed)")
+            Task {
+                var request = URLRequest(url: UpdateChecker.latestRelease)
+                request.setValue("Comet-42/selftest", forHTTPHeaderField: "User-Agent")
+                let data = try? await URLSession(configuration: .ephemeral).data(for: request).0
+                let object = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+                print("updates: latest release on GitHub is \(object?["tag_name"] as? String ?? "unknown")")
+                exit(failed.isEmpty ? 0 : 1)
+            }
+            RunLoop.main.run()
+        }
         let backend: AIBackend = CommandLine.arguments.contains("codex") ? .codex : .claude
         Task {
             let support = FileManager.default.temporaryDirectory.appending(path: "Comet-selftest")

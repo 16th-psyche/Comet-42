@@ -28,7 +28,7 @@ enum CometApp {
 }
 
 /// The composition root: the one owner of every long-lived object.
-final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDelegate {
     private let settings = AppSettings()
     private let hotKeys = HotKeyCenter()
     private let watcher = ClipboardWatcher()
@@ -38,6 +38,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var statusItem: NSStatusItem?
     private var settingsWindow: NSWindow?
     private var onboardingWindow: NSWindow?
+    private let updates = UpdateChecker()
+    private var updateItem: NSMenuItem?
 
     private static let mainHotKeyID: UInt32 = 1
     /// Preset shortcuts take ids from here up, one per preset that has a shortcut.
@@ -67,6 +69,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         let registered = applyHotKey()
         controller.presets.onChange = { [weak self] in self?.registerPresetHotKeys() }
+        if settings.checksForUpdates { updates.start() }
         registerPresetHotKeys()
         if !settings.hasCompletedOnboarding {
             showOnboarding()
@@ -139,6 +142,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         item.button?.image = CometGlyph.menuBarImage()
         let menu = NSMenu()
+        menu.delegate = self
+        let update = menu.addItem(withTitle: "", action: #selector(openUpdatePage), keyEquivalent: "")
+        update.target = self
+        update.isHidden = true
+        updateItem = update
         let open = menu.addItem(withTitle: "Open Comet 42", action: #selector(openPanel), keyEquivalent: "")
         open.target = self
         menu.addItem(.separator())
@@ -169,6 +177,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
     }
 
+    /// The update line is rebuilt each time the menu opens, from the checker's latest answer.
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        guard let updateItem else { return }
+        if case .available(let version, _) = updates.state {
+            updateItem.title = "Update Available: v\(version)…"
+            updateItem.image = NSImage(systemSymbolName: "arrow.down.circle", accessibilityDescription: nil)
+            updateItem.isHidden = false
+        } else {
+            updateItem.isHidden = true
+        }
+    }
+
+    @objc private func openUpdatePage() {
+        if case .available(_, let page) = updates.state { NSWorkspace.shared.open(page) }
+    }
+
     @objc private func openPanel() {
         Task { await controller.summon() }
     }
@@ -186,7 +210,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if settingsWindow == nil {
             let view = SettingsView(
                 controller: controller, hotKeys: hotKeys,
-                applyHotKey: { [weak self] in self?.applyHotKey() ?? false })
+                applyHotKey: { [weak self] in self?.applyHotKey() ?? false }, updates: updates)
             let window = NSWindow(contentViewController: NSHostingController(rootView: view))
             window.title = "Comet 42 Settings"
             window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]

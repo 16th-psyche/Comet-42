@@ -139,7 +139,9 @@ private final class DemoDelegate: NSObject, NSApplicationDelegate {
 
     private func showSettings(settings: AppSettings) {
         controller.settingsTab = "presets"
-        let view = SettingsView(controller: controller, hotKeys: HotKeyCenter(), applyHotKey: { true })
+        let view = SettingsView(
+            controller: controller, hotKeys: HotKeyCenter(), applyHotKey: { true },
+            updates: UpdateChecker())
         let window = NSWindow(contentViewController: NSHostingController(rootView: view))
         window.title = "Comet 42 Settings"
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]

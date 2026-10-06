@@ -6,6 +6,7 @@ struct SettingsView: View {
     let controller: CometController
     let hotKeys: HotKeyCenter
     let applyHotKey: () -> Bool
+    let updates: UpdateChecker
 
     var body: some View {
         @Bindable var controller = controller
@@ -37,13 +38,14 @@ struct SettingsView: View {
     private func detail(for page: SettingsPage) -> some View {
         switch page {
         case .general:
-            GeneralPage(controller: controller, hotKeys: hotKeys, applyHotKey: applyHotKey)
+            GeneralPage(
+                controller: controller, hotKeys: hotKeys, applyHotKey: applyHotKey, updates: updates)
         case .panel: PanelPage(controller: controller)
         case .models: ModelsPage(controller: controller)
         case .tools: ToolsPage(backends: controller.backends)
         case .presets: PresetsPage(controller: controller, hotKeys: hotKeys)
         case .permissions: PermissionsPage(controller: controller)
-        case .about: AboutPage()
+        case .about: AboutPage(updates: updates)
         }
     }
 }
@@ -151,6 +153,7 @@ private struct GeneralPage: View {
     let controller: CometController
     let hotKeys: HotKeyCenter
     let applyHotKey: () -> Bool
+    let updates: UpdateChecker
     @State private var hotKeyFailed = false
     @State private var launchesAtLogin = LaunchAtLogin.isEnabled
     @State private var loginError: String?
@@ -202,6 +205,13 @@ private struct GeneralPage: View {
                 }
                 if let loginError {
                     Text(loginError).font(.caption).foregroundStyle(.orange)
+                }
+                DescribedToggle(
+                    title: "Check for updates",
+                    detail: "Asks GitHub once a day whether a newer version exists. Nothing is downloaded or installed for you.",
+                    isOn: $settings.checksForUpdates)
+                .onChange(of: settings.checksForUpdates) {
+                    settings.checksForUpdates ? updates.start() : updates.stop()
                 }
             }
 
@@ -886,6 +896,8 @@ private struct PermissionsPage: View {
 // MARK: - About
 
 private struct AboutPage: View {
+    let updates: UpdateChecker
+
     private var version: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
     }
@@ -903,6 +915,7 @@ private struct AboutPage: View {
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: 380)
+            updateStatus
             HStack(spacing: 10) {
                 Button("Show Presets File") {
                     let url = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -917,5 +930,32 @@ private struct AboutPage: View {
                 .padding(.bottom, 16)
         }
         .frame(maxWidth: .infinity)
+    }
+
+    @ViewBuilder
+    private var updateStatus: some View {
+        HStack(spacing: 8) {
+            switch updates.state {
+            case .checking:
+                ProgressView().controlSize(.small)
+                Text("Checking for updates…").foregroundStyle(.secondary)
+            case .upToDate:
+                Label("Comet 42 is up to date", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+            case .available(let latest, let page):
+                Label("Version \(latest) is available", systemImage: "arrow.down.circle.fill")
+                    .foregroundStyle(.tint)
+                Button("Download") { NSWorkspace.shared.open(page) }
+            case .failed(let message):
+                Label(message, systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
+            case .idle:
+                EmptyView()
+            }
+            if updates.state != .checking {
+                Button("Check Now") { Task { await updates.check() } }
+                    .disabled(updates.currentVersion == nil)
+            }
+        }
+        .font(.callout)
     }
 }
