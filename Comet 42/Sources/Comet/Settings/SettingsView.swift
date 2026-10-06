@@ -41,7 +41,7 @@ struct SettingsView: View {
         case .panel: PanelPage(controller: controller)
         case .models: ModelsPage(controller: controller)
         case .tools: ToolsPage(backends: controller.backends)
-        case .presets: PresetsPage(controller: controller)
+        case .presets: PresetsPage(controller: controller, hotKeys: hotKeys)
         case .permissions: PermissionsPage(controller: controller)
         case .about: AboutPage()
         }
@@ -417,6 +417,7 @@ private struct ToolsPage: View {
 
 private struct PresetsPage: View {
     let controller: CometController
+    let hotKeys: HotKeyCenter
     @State private var selection: UUID?
     @State private var confirmsRestore = false
 
@@ -523,7 +524,8 @@ private struct PresetsPage: View {
         if let selection, let preset = store.preset(id: selection) {
             PresetEditor(
                 preset: preset, index: store.index(of: selection) ?? 0,
-                tint: tint(for: preset), backends: controller.backends
+                tint: tint(for: preset), backends: controller.backends, hotKeys: hotKeys,
+                takenShortcuts: takenShortcuts(except: selection)
             ) { store.upsert($0) }
             .id(selection)
         } else {
@@ -553,6 +555,15 @@ private struct PresetsPage: View {
             selection = preset.id
             delete()
         }
+    }
+
+    /// Every shortcut already in use, so a preset cannot take one that would never fire.
+    private func takenShortcuts(except id: UUID) -> [HotKeyChord: String] {
+        var taken = [controller.settings.hotKey: "Open Comet 42"]
+        for preset in store.presets where preset.id != id {
+            if let chord = preset.hotKey { taken[chord] = preset.name }
+        }
+        return taken
     }
 
     private func tint(for preset: Preset) -> Color {
@@ -615,8 +626,11 @@ private struct PresetEditor: View {
     let index: Int
     let tint: Color
     let backends: AIBackends
+    let hotKeys: HotKeyCenter
+    let takenShortcuts: [HotKeyChord: String]
     let onSave: (Preset) -> Void
     @State private var showsSymbols = false
+    @State private var shortcutClash: String?
 
     var body: some View {
         Form {
@@ -662,6 +676,44 @@ private struct PresetEditor: View {
             } footer: {
                 Text("Tell the model what to do with the selected text, pasted text or screenshot.")
                     .font(.caption).foregroundStyle(.secondary)
+            }
+
+            Section {
+                LabeledContent {
+                    HStack(spacing: 6) {
+                        HotKeyRecorder(chord: preset.hotKey, hotKeys: hotKeys) { chord in
+                            if let owner = takenShortcuts[chord] {
+                                shortcutClash = "\(chord.displayString) is already used by \(owner)."
+                            } else {
+                                shortcutClash = nil
+                                preset.hotKey = chord
+                            }
+                        }
+                        if preset.hotKey != nil {
+                            Button {
+                                preset.hotKey = nil
+                                shortcutClash = nil
+                            } label: {
+                                Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Remove shortcut")
+                            .accessibilityLabel("Remove shortcut")
+                        }
+                    }
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Run from any app")
+                        Text("Select text anywhere and press it. No panel opens if the result replaces the selection directly.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                if let shortcutClash {
+                    Label(shortcutClash, systemImage: "exclamationmark.triangle.fill")
+                        .font(.callout).foregroundStyle(.orange)
+                }
+            } header: {
+                Text("Shortcut")
             }
 
             Section("Behaviour") {

@@ -90,8 +90,9 @@ struct StatusBadge: View {
 
 /// Click, then press the new chord; every hotkey is paused while recording so any combo lands.
 struct HotKeyRecorder: View {
-    let chord: HotKeyChord
+    let chord: HotKeyChord?
     let hotKeys: HotKeyCenter
+    var placeholder = "Record Shortcut"
     let onChange: (HotKeyChord) -> Void
     @State private var recording = false
     @State private var monitor: Any?
@@ -105,14 +106,17 @@ struct HotKeyRecorder: View {
                     Image(systemName: "record.circle").foregroundStyle(.red)
                     Text("Press a shortcut…")
                 } else {
-                    Text(chord.displayString).font(.system(.body, design: .rounded).weight(.medium))
+                    Text(chord?.displayString ?? placeholder)
+                        .font(.system(.body, design: .rounded).weight(.medium))
+                        .foregroundStyle(chord == nil ? .secondary : .primary)
                 }
             }
             .frame(minWidth: 130)
         }
         .controlSize(.large)
         .help(recording ? "Press the new shortcut, or Esc to cancel" : "Click to record a new shortcut")
-        .accessibilityLabel(recording ? "Recording shortcut" : "Shortcut \(chord.displayString)")
+        .accessibilityLabel(
+            recording ? "Recording shortcut" : chord.map { "Shortcut \($0.displayString)" } ?? placeholder)
         .accessibilityHint("Activate, then press the new key combination")
         .onDisappear(perform: stop)
     }

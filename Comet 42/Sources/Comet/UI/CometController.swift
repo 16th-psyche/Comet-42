@@ -238,7 +238,9 @@ final class CometController {
         if preset.delivery == .replace, preset.transformsText, let target, session.images.isEmpty,
             onlySelection, session.sourceApp != nil, session.turns.isEmpty
         {
-            replaceDirectly(preset, text: target, message: message, choice: choice)
+            replaceDirectly(
+                preset, text: target, message: message, choice: choice, app: session.sourceApp)
+            session.texts = []
             return
         }
         appendUserTurn(display: preset.name, prompt: message, preset: preset)
@@ -345,11 +347,10 @@ final class CometController {
 
     /// A direct preset: no panel, a progress pill, and the result pasted over the selection.
     private func replaceDirectly(
-        _ preset: Preset, text: String, message: String, choice: ModelChoice
+        _ preset: Preset, text: String, message: String, choice: ModelChoice,
+        app: NSRunningApplication?
     ) {
-        let app = session.sourceApp
         panel?.hide()
-        session.texts = []
         let provider: any AIProvider
         do {
             provider = try backends.provider(for: choice, effort: settings.effortValue)
@@ -404,19 +405,124 @@ final class CometController {
 
     var canReplace: Bool { session.sourceApp != nil && conversationSelection != nil }
 
-    func replace(with turn: ChatTurn) {
+    func replace(with turn: ChatTurn, mode: TextReplacer.Mode = .replace) {
         let text = turn.display.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         let app = session.sourceApp
         panel?.hide()
-        Task { await deliver(text, to: app, title: turn.presetName ?? "Answer") }
+        Task { await deliver(text, to: app, title: turn.presetName ?? "Answer", mode: mode) }
+    }
+
+    func insertAfter(_ turn: ChatTurn) {
+        replace(with: turn, mode: .insertAfter)
+    }
+
+    /// The reader's own wording wins: Replace, Insert After and Copy all use the edited answer.
+    func editAnswer(id: UUID, text: String) {
+        guard let index = session.turns.firstIndex(where: { $0.id == id }) else { return }
+        session.turns[index].display = text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// A replacement that never lands would otherwise lose the reply, so the clipboard keeps it.
-    private func deliver(_ text: String, to app: NSRunningApplication?, title: String) async {
-        switch await TextReplacer.replace(with: text, in: app, watcher: watcher) {
-        case .pasted: hud.show(title + " applied")
-        case .copied: hud.show("Couldn’t replace the selection — copied instead", tone: .danger)
+    private func deliver(
+        _ text: String, to app: NSRunningApplication?, title: String,
+        mode: TextReplacer.Mode = .replace
+    ) async {
+        switch await TextReplacer.replace(with: text, in: app, watcher: watcher, mode: mode) {
+        case .pasted: hud.show(title + (mode == .insertAfter ? " inserted" : " applied"))
+        case .copied: hud.show("Couldn’t paste into the app — copied instead", tone: .danger)
+        }
+    }
+
+    // MARK: - Capture and preset shortcuts
+
+    /// Hides the panel, lets the reader drag out an area, and stages it as an image.
+    func captureArea() {
+        guard !isCapturing, let panel else { return }
+        isCapturing = true
+        panel.hide()
+        let folder = backends.workspace
+        Task {
+            defer { isCapturing = false }
+            // Long enough for the panel to leave the screen, so it is never in the capture.
+            try? await Task.sleep(for: .milliseconds(200))
+            let file = folder.appending(path: "comet-capture-\(UUID().uuidString).png")
+            defer { try? FileManager.default.removeItem(at: file) }
+            _ = await CLIProcess.run(
+                executable: URL(fileURLWithPath: "/usr/sbin/screencapture"),
+                arguments: ["-i", "-x", file.path], workspace: folder,
+                environment: ProcessInfo.processInfo.environment, timeout: .seconds(300))
+            // A cancelled capture (Esc) writes no file; the panel just comes back as it was.
+            if let data = try? Data(contentsOf: file),
+                let image = ClipboardImage.stage(data, name: "Capture")
+            {
+                session.images.append(image)
+                notice = nil
+            }
+            session.lastActivity = Date()
+            panel.show()
+        }
+    }
+
+    /// Typing `/` in the question box turns it into a preset search.
+    var presetQuery: String? {
+        guard session.draft.hasPrefix("/") else { return nil }
+        return String(session.draft.dropFirst()).trimmingCharacters(in: .whitespaces).lowercased()
+    }
+
+    func presetMatches(_ query: String) -> [Preset] {
+        let words = query.split(separator: " ").map(String.init)
+        guard !words.isEmpty else { return presets.presets }
+        return presets.presets.filter { preset in
+            let name = preset.name.lowercased()
+            return words.allSatisfy { name.contains($0) }
+        }
+    }
+
+    func runFromSearch(_ preset: Preset) {
+        session.draft = ""
+        run(preset)
+    }
+
+    /// A preset's own global shortcut: no panel for a direct replace, the panel otherwise.
+    func runPresetFromHotKey(_ id: UUID) {
+        guard let preset = presets.preset(id: id), !session.isRunning, !isCapturing else { return }
+        Task {
+            let front = NSWorkspace.shared.frontmostApplication
+            guard front?.bundleIdentifier != Bundle.main.bundleIdentifier else {
+                if panel?.isVisible == true { run(preset) }
+                return
+            }
+            isCapturing = true
+            let copiedAt = watcher.lastChangeAt
+            let imageIsFresh = watcher.isFresh
+            let clipboardImage = ClipboardImage.read()
+            let selection = await SelectionReader.selection(in: front)
+            watcher.acknowledgeOwnChange(keepingDate: copiedAt)
+            isCapturing = false
+            if let selection {
+                let choice = preset.model ?? settings.actionModel
+                if preset.delivery == .replace, preset.transformsText {
+                    replaceDirectly(
+                        preset, text: selection,
+                        message: PresetPrompt.message(selection: selection, hasImages: false),
+                        choice: choice, app: front)
+                    return
+                }
+                startNewChat()
+                session.sourceApp = front
+                session.setSelection(selection)
+            } else if !preset.transformsText, imageIsFresh, let clipboardImage {
+                // Explain or Extract Text on a fresh screenshot needs no selection at all.
+                startNewChat()
+                session.sourceApp = front
+                session.images = [clipboardImage]
+            } else {
+                hud.show("Select some text first, then press the \(preset.name) shortcut", tone: .danger)
+                return
+            }
+            panel?.show()
+            run(preset)
         }
     }
 

@@ -28,11 +28,13 @@ nonisolated struct Preset: Codable, Identifiable, Hashable, Sendable {
     var showsDiff: Bool
     /// Nil follows the default action model in Settings.
     var model: ModelChoice?
+    /// A global shortcut that runs this preset from any app; absent from older preset files.
+    var hotKey: HotKeyChord?
 
     init(
         id: UUID = UUID(), name: String, symbol: String, instructions: String,
         delivery: Delivery = .preview, transformsText: Bool = true, showsDiff: Bool = false,
-        model: ModelChoice? = nil
+        model: ModelChoice? = nil, hotKey: HotKeyChord? = nil
     ) {
         self.id = id
         self.name = name
@@ -42,6 +44,7 @@ nonisolated struct Preset: Codable, Identifiable, Hashable, Sendable {
         self.transformsText = transformsText
         self.showsDiff = showsDiff
         self.model = model
+        self.hotKey = hotKey
     }
 }
 
@@ -184,6 +187,8 @@ extension Preset {
 final class PresetStore {
     private(set) var presets: [Preset] = []
     @ObservationIgnored private let file: URL
+    /// Told after every save, so preset shortcuts are re-registered when presets change.
+    @ObservationIgnored var onChange: () -> Void = {}
 
     init(supportDirectory: URL) {
         file = supportDirectory.appending(path: "presets.json")
@@ -241,5 +246,6 @@ final class PresetStore {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         guard let data = try? encoder.encode(presets) else { return }
         try? data.write(to: file, options: .atomic)
+        onChange()
     }
 }

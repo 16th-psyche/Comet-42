@@ -22,7 +22,7 @@ private final class DemoDelegate: NSObject, NSApplicationDelegate {
     private var panel: CometPanelController!
     private var settingsWindow: NSWindow?
 
-    private static let shots = ["rewrite", "chat", "context", "settings"]
+    private static let shots = ["rewrite", "chat", "context", "search", "settings", "onboarding"]
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let shot = CommandLine.arguments.first { Self.shots.contains($0) } ?? "rewrite"
@@ -54,7 +54,7 @@ private final class DemoDelegate: NSObject, NSApplicationDelegate {
 
         switch shot {
         case "chat": loadChat(session)
-        case "context": loadContext(session)
+        case "context", "search": loadContext(session)
         case "settings": break
         default: loadRewrite(session)
         }
@@ -72,6 +72,8 @@ private final class DemoDelegate: NSObject, NSApplicationDelegate {
                 // Typed after focus, so the field shows a caret rather than a selected draft.
                 if shot == "context" {
                     self.controller.session.draft = "Turn this and the chart into a short status update"
+                } else if shot == "search" {
+                    self.controller.session.draft = "/to"
                 }
                 try? await Task.sleep(for: .seconds(1.2))
                 print("WINDOW \(self.panel.windowNumber)")

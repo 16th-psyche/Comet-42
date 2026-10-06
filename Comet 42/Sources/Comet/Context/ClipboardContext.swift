@@ -188,8 +188,16 @@ enum TextReplacer {
         case copied
     }
 
+    enum Mode {
+        /// Over the selection.
+        case replace
+        /// After it, on a new line, leaving the original in place.
+        case insertAfter
+    }
+
     static func replace(
-        with text: String, in app: NSRunningApplication?, watcher: ClipboardWatcher
+        with text: String, in app: NSRunningApplication?, watcher: ClipboardWatcher,
+        mode: Mode = .replace
     ) async -> Outcome {
         guard let app, Permissions.isAccessibilityTrusted, !app.isTerminated else {
             copy(text, watcher: watcher)
@@ -209,8 +217,13 @@ enum TextReplacer {
         let snapshot = PasteboardSnapshot(pasteboard)
         let copiedAt = watcher.lastChangeAt
         pasteboard.clearContents()
-        pasteboard.setString(text, forType: .string)
+        pasteboard.setString(mode == .insertAfter ? "\n" + text : text, forType: .string)
         await KeySynth.waitForModifierRelease()
+        if mode == .insertAfter {
+            // → collapses the selection to its end, so the paste lands after it, not over it.
+            KeySynth.plain(CGKeyCode(kVK_RightArrow))
+            try? await Task.sleep(for: .milliseconds(40))
+        }
         KeySynth.command(CGKeyCode(kVK_ANSI_V))
         // The target reads the pasteboard asynchronously; restoring too soon pastes the old item.
         try? await Task.sleep(for: .milliseconds(450))

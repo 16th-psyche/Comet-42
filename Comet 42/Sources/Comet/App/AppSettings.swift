@@ -3,7 +3,7 @@ import Foundation
 import Observation
 
 /// A chord as Carbon registers it: a virtual key code and Carbon modifier bits.
-nonisolated struct HotKeyChord: Codable, Equatable, Sendable {
+nonisolated struct HotKeyChord: Codable, Hashable, Sendable {
     var keyCode: UInt32
     var modifiers: UInt32
 

@@ -174,13 +174,22 @@ enum KeySynth {
     private static let eventTag: Int64 = 0x434D_4554
 
     static func command(_ key: CGKeyCode) {
+        press(key, flags: .maskCommand)
+    }
+
+    /// A key with no modifiers, such as → to collapse a selection to its end.
+    static func plain(_ key: CGKeyCode) {
+        press(key, flags: [])
+    }
+
+    private static func press(_ key: CGKeyCode, flags: CGEventFlags) {
         // A private source: the reader's still-held hotkey modifiers must not join this chord.
         let source = CGEventSource(stateID: .privateState)
         guard let down = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: true),
             let up = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: false)
         else { return }
-        down.flags = .maskCommand
-        up.flags = .maskCommand
+        down.flags = flags
+        up.flags = flags
         down.setIntegerValueField(.eventSourceUserData, value: eventTag)
         up.setIntegerValueField(.eventSourceUserData, value: eventTag)
         down.post(tap: .cghidEventTap)

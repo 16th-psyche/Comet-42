@@ -40,6 +40,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var onboardingWindow: NSWindow?
 
     private static let mainHotKeyID: UInt32 = 1
+    /// Preset shortcuts take ids from here up, one per preset that has a shortcut.
+    private static let presetHotKeyBase: UInt32 = 100
+    private var presetHotKeyIDs: [UInt32] = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let support = Self.supportDirectory()
@@ -62,6 +65,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             Permissions.ensureAccessibility()
         }
         let registered = applyHotKey()
+        controller.presets.onChange = { [weak self] in self?.registerPresetHotKeys() }
+        registerPresetHotKeys()
         if !settings.hasCompletedOnboarding {
             showOnboarding()
         } else if !registered {
@@ -75,6 +80,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func applyHotKey() -> Bool {
         hotKeys.register(id: Self.mainHotKeyID, chord: settings.hotKey) { [weak self] in
             self?.controller.toggle()
+        }
+    }
+
+    /// Re-registered whenever presets change, so a removed or edited shortcut never lingers.
+    private func registerPresetHotKeys() {
+        presetHotKeyIDs.forEach(hotKeys.unregister(id:))
+        presetHotKeyIDs = []
+        for (index, preset) in controller.presets.presets.enumerated() {
+            guard let chord = preset.hotKey, chord != settings.hotKey else { continue }
+            let id = Self.presetHotKeyBase + UInt32(index)
+            let presetID = preset.id
+            hotKeys.register(id: id, chord: chord) { [weak self] in
+                self?.controller.runPresetFromHotKey(presetID)
+            }
+            presetHotKeyIDs.append(id)
         }
     }
 

@@ -11,6 +11,7 @@ struct CometView: View {
     @State private var topHeight: CGFloat = 0
     @State private var bottomHeight: CGFloat = 0
     @State private var transcriptHeight: CGFloat = 0
+    @State private var searchIndex = 0
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorSchemeContrast) private var contrast
 
@@ -46,6 +47,7 @@ struct CometView: View {
 
             VStack(alignment: .leading, spacing: 0) {
                 contextBar
+                if let query = controller.presetQuery { presetSearch(query) }
                 composer
                 presetRow
                 footer
@@ -171,6 +173,8 @@ struct CometView: View {
                 .keyboardShortcut("0", modifiers: [.command, .option])
             Button("Close") { controller.panel?.hide() }
                 .keyboardShortcut("w", modifiers: .command)
+            Button("Capture") { controller.captureArea() }
+                .keyboardShortcut("s", modifiers: [.command, .shift])
         }
         .opacity(0)
         .frame(width: 0, height: 0)
@@ -245,6 +249,16 @@ struct CometView: View {
                 .buttonStyle(.plain)
                 .help("Add what’s on the clipboard: text, a screenshot or a file (⌘V)")
                 .accessibilityLabel("Paste from clipboard")
+                Button(action: controller.captureArea) {
+                    Label("Capture", systemImage: "camera.viewfinder")
+                        .scaledFont(12)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 5)
+                        .background(palette.chipFill, in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .help("Drag over part of the screen to attach it (⌘⇧S)")
+                .accessibilityLabel("Capture part of the screen")
                 .accessibilityHint("Adds the clipboard’s text, image or file as context")
             }
             .padding(.horizontal, 16)
@@ -302,7 +316,15 @@ struct CometView: View {
                 .scaledFont(17)
                 .lineLimit(1...8)
                 .focused($composerFocused)
-                .onSubmit(controller.send)
+                .onSubmit(submit)
+                .onKeyPress(.upArrow) { moveSearch(-1) }
+                .onKeyPress(.downArrow) { moveSearch(1) }
+                .onKeyPress(.escape) {
+                    guard controller.presetQuery != nil else { return .ignored }
+                    session.draft = ""
+                    return .handled
+                }
+                .onChange(of: session.draft) { searchIndex = 0 }
                 .disabled(session.isRunning)
                 .accessibilityLabel("Question")
                 .accessibilityHint("Press Return to ask. Command-V pastes text, images or files.")
@@ -323,7 +345,102 @@ struct CometView: View {
         .padding(.vertical, 12)
     }
 
+    private func submit() {
+        guard let query = controller.presetQuery else {
+            controller.send()
+            return
+        }
+        let matches = controller.presetMatches(query)
+        guard matches.indices.contains(searchIndex) else { return }
+        controller.runFromSearch(matches[searchIndex])
+    }
+
+    private func moveSearch(_ offset: Int) -> KeyPress.Result {
+        guard let query = controller.presetQuery else { return .ignored }
+        let count = controller.presetMatches(query).count
+        guard count > 0 else { return .handled }
+        searchIndex = (searchIndex + offset + count) % count
+        return .handled
+    }
+
+    /// `/` plus a few letters filters the presets; ↑ ↓ choose, ↩ runs, Esc clears.
+    private func presetSearch(_ query: String) -> some View {
+        let matches = Array(controller.presetMatches(query).prefix(7))
+        return VStack(alignment: .leading, spacing: 2) {
+            if matches.isEmpty {
+                Text("No preset matches “\(query)”")
+                    .scaledFont(12).foregroundStyle(palette.secondary)
+                    .padding(.horizontal, 10).padding(.vertical, 6)
+            }
+            ForEach(Array(matches.enumerated()), id: \.element.id) { index, preset in
+                Button {
+                    controller.runFromSearch(preset)
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: preset.symbol).frame(width: 18).foregroundStyle(.tint)
+                        Text(preset.name).scaledFont(13)
+                        Spacer()
+                        if let number = controller.presets.index(of: preset.id), number < 9 {
+                            Text("⌘\(number + 1)").scaledFont(11).foregroundStyle(.tertiary)
+                        }
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 7)
+                            .fill(index == searchIndex ? Color.accentColor.opacity(0.22) : .clear))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(index == searchIndex ? .isSelected : [])
+            }
+        }
+        .padding(6)
+        .background(palette.chipFill, in: RoundedRectangle(cornerRadius: 10))
+        .padding(.horizontal, 12)
+        .padding(.top, 10)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Matching presets")
+    }
+
     private var presetRow: some View {
+        HStack(spacing: 0) {
+            presetsMenu
+                .padding(.leading, 16)
+                .padding(.trailing, 4)
+            presetChips
+        }
+        .padding(.bottom, 10)
+    }
+
+    /// Every preset in one place, however many there are; the chips beside it only scroll.
+    private var presetsMenu: some View {
+        Menu {
+            ForEach(Array(controller.presets.presets.enumerated()), id: \.element.id) { index, preset in
+                Button {
+                    controller.run(preset)
+                } label: {
+                    Label(index < 9 ? "\(preset.name)    ⌘\(index + 1)" : preset.name, systemImage: preset.symbol)
+                }
+            }
+            Divider()
+            Button("Search Presets…  /") {
+                session.draft = "/"
+                composerFocused = true
+            }
+            Button("Edit Presets…") { controller.editPreset(controller.presets.presets.first?.id ?? UUID()) }
+        } label: {
+            Label("Presets", systemImage: "square.grid.2x2")
+                .scaledFont(12)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .disabled(session.isRunning)
+        .help("All presets (type / to search)")
+        .accessibilityLabel("All presets")
+    }
+
+    private var presetChips: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
                 ForEach(Array(controller.presets.presets.enumerated()), id: \.element.id) {
@@ -341,9 +458,8 @@ struct CometView: View {
                     }
                 }
             }
-            .padding(.horizontal, 16)
+            .padding(.trailing, 16)
         }
-        .padding(.bottom, 10)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Actions")
     }
@@ -423,6 +539,8 @@ private struct TurnView: View {
     let palette: PanelPalette
     let controller: CometController
     @State private var showsDiff = true
+    @State private var isEditing = false
+    @State private var draft = ""
 
     var body: some View {
         switch turn.role {
@@ -499,6 +617,23 @@ private struct TurnView: View {
                 .scaledFont(13)
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(turn.isThinking ? "Thinking" : "Working")
+            } else if isEditing {
+                TextEditor(text: $draft)
+                    .scaledFont(14)
+                    .scrollContentBackground(.hidden)
+                    .padding(6)
+                    .frame(minHeight: 90, maxHeight: 260)
+                    .background(palette.chipFill, in: RoundedRectangle(cornerRadius: 8))
+                    .accessibilityLabel("Edit answer")
+                HStack(spacing: 8) {
+                    Button("Done") {
+                        controller.editAnswer(id: turn.id, text: draft)
+                        isEditing = false
+                    }
+                    .keyboardShortcut(.return, modifiers: .command)
+                    Button("Cancel") { isEditing = false }
+                }
+                .controlSize(.small)
             } else if turn.showsDiff, showsDiff, !turn.isStreaming, let original = turn.original {
                 DiffView(original: original, modified: turn.display)
                     .scaledFont(14)
@@ -508,7 +643,7 @@ private struct TurnView: View {
                 MarkdownView(text: turn.display, midStream: turn.isStreaming)
                     .scaledFont(14)
             }
-            if !turn.isStreaming, turn.error == nil, !turn.display.isEmpty {
+            if !turn.isStreaming, turn.error == nil, !turn.display.isEmpty, !isEditing {
                 actions
             }
         }
@@ -527,11 +662,28 @@ private struct TurnView: View {
                 .keyboardShortcut(.return, modifiers: .command)
                 .help("Paste over the original selection (⌘↩)")
                 .accessibilityHint("Pastes this answer over the text you selected")
+                Button {
+                    controller.insertAfter(turn)
+                } label: {
+                    Label("Insert After", systemImage: "text.append")
+                }
+                .keyboardShortcut(.return, modifiers: [.command, .shift])
+                .help("Keep your text and add the answer after it (⌘⇧↩)")
+                .accessibilityHint("Pastes this answer after the text you selected")
             }
             Button {
                 controller.copy(turn)
             } label: {
                 Label("Copy", systemImage: "doc.on.doc")
+            }
+            if isLast {
+                Button {
+                    draft = turn.display
+                    isEditing = true
+                } label: {
+                    Label("Edit", systemImage: "pencil")
+                }
+                .help("Change the answer before you replace or copy it")
             }
             if turn.showsDiff {
                 Toggle("Show changes", isOn: $showsDiff)
