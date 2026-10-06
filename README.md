@@ -17,6 +17,8 @@ screenshot-to-text · Claude and Codex (ChatGPT) in your menu bar</sub>
 [![Swift 6.2](https://img.shields.io/badge/Swift-6.2-F05138?logo=swift&logoColor=white)](Comet%2042/Package.swift)
 [![No API keys](https://img.shields.io/badge/API%20keys-none-6E40C9)](#privacy)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-3DA639)](LICENSE)
+[![CI](https://github.com/16th-psyche/Comet-42/actions/workflows/ci.yml/badge.svg)](https://github.com/16th-psyche/Comet-42/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/16th-psyche/Comet-42?label=download)](https://github.com/16th-psyche/Comet-42/releases/latest)
 
 [Why](#the-problem-it-solves) · [Features](#features) · [Screenshots](#screenshots) · [Install](#install) · [Usage](#usage) · [Presets](#presets) · [FAQ](#faq) · [Privacy](#privacy)
 
@@ -74,15 +76,24 @@ Codex CLI you already use, so there's no new account and no key to manage.
 ## Features
 
 - **Works on what you're looking at.** Comet 42 reads the text you've selected in any app. A
-  screenshot you've just copied is attached automatically.
+  screenshot you've just copied is attached automatically, or press **Capture**
+  (<kbd>⌘</kbd> <kbd>⇧</kbd> <kbd>S</kbd>) and drag over any part of the screen.
 - **Paste anything in.** <kbd>⌘</kbd> <kbd>V</kbd> takes text, screenshots, images, PDFs and code
   files, or drag them onto the panel.
 - **One-click presets.** Improve Writing, Fix Spelling and Grammar, Change to Email and more, on
-  <kbd>⌘</kbd> <kbd>1</kbd>–<kbd>9</kbd>. You can edit, reorder and add your own.
+  <kbd>⌘</kbd> <kbd>1</kbd>–<kbd>9</kbd>. Type <kbd>/</kbd> to search them, and edit, reorder or
+  add your own.
+- **Presets from anywhere.** Give any preset its own global shortcut. Select text in any app,
+  press it, and the fix is pasted in place without opening the panel.
 - **Puts the answer back.** **Replace** pastes the result over your original selection, and
-  rewrites show word-by-word changes first.
+  **Insert After** adds it below. Rewrites show word-by-word changes, and you can edit an answer
+  before using it.
 - **Chat that remembers.** Ask follow-ups in the same panel; answers stream in as Markdown.
-- **Uses the AI you already have.** Pick any model from the Claude CLI, or the Codex CLI.
+  Optional **history** keeps your last 50 chats on your Mac.
+- **Uses the AI you already have.** Pick any model from the Claude CLI or your Codex account; both
+  stream word by word.
+- **Easy to set up.** A short welcome guide checks your AI tools and permissions, and Comet 42 can
+  open at login and tell you when an update is out.
 - **Built for everyone.** The panel moves and resizes, text scales up to 160%, VoiceOver labels
   every control, and Reduce Transparency and Increase Contrast are honoured.
 - **Native and small.** Swift and SwiftUI, a single menu-bar app, no third-party dependencies.
@@ -220,10 +231,14 @@ your selection and paste results back.
 | <kbd>⌥</kbd> <kbd>Space</kbd> | Open or close Comet 42 |
 | <kbd>↩</kbd> | Ask |
 | <kbd>⌘</kbd> <kbd>1</kbd>–<kbd>9</kbd> | Run a preset |
+| <kbd>/</kbd> | Search presets (<kbd>↑</kbd> <kbd>↓</kbd> to choose, <kbd>↩</kbd> to run) |
 | <kbd>⌘</kbd> <kbd>V</kbd> | Paste text, a screenshot or a file as context |
+| <kbd>⌘</kbd> <kbd>⇧</kbd> <kbd>S</kbd> | Capture part of the screen |
 | <kbd>⌘</kbd> <kbd>↩</kbd> | Replace the original selection with the answer |
+| <kbd>⌘</kbd> <kbd>⇧</kbd> <kbd>↩</kbd> | Insert the answer after the selection |
 | <kbd>⌘</kbd> <kbd>⇧</kbd> <kbd>C</kbd> | Copy the last answer |
 | <kbd>⌘</kbd> <kbd>N</kbd> | New chat |
+| <kbd>⌘</kbd> <kbd>Y</kbd> | Chat history (when turned on) |
 | <kbd>⌘</kbd> <kbd>+</kbd> / <kbd>⌘</kbd> <kbd>−</kbd> / <kbd>⌘</kbd> <kbd>0</kbd> | Larger, smaller or actual text size |
 | <kbd>⌘</kbd> <kbd>⌥</kbd> <kbd>0</kbd> | Reset the panel's size and position |
 | <kbd>Esc</kbd> | Close the panel |
@@ -313,8 +328,13 @@ Claude or ChatGPT/Codex plan.
   changes, so it can offer a fresh screenshot.
 - **Your clipboard is put back.** When Comet 42 borrows the clipboard to copy a selection or paste
   a result, it restores your previous contents.
-- **No chat history on disk.** Conversations stay in memory. Images sent to Codex go to temporary
-  files in a private folder, which are deleted after each request.
+- **History is off unless you turn it on.** Then only the text of your last 50 chats is saved, on
+  this Mac, and **Clear History** deletes it. Images are never saved; ones sent to Codex's older
+  fallback mode go to temporary files that are deleted after each request.
+- **Screen capture asks first.** The first time you use **Capture**, macOS asks for Screen
+  Recording permission. Comet 42 only captures the area you drag out.
+- **One small network request of its own.** Besides your AI CLI, Comet 42 only asks GitHub once
+  a day whether a newer version exists. Turn it off in **Settings → General**.
 
 ## Development
 

@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: macos-26
+    defaults:
+      run:
+        working-directory: Comet 42
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: swift --version && xcrun --show-sdk-version
+
+      - name: Build
+        run: swift build
+
+      - name: History self-test
+        run: .build/debug/Comet --selftest history
+
+      - name: Update-check self-test
+        run: .build/debug/Comet --selftest updates
+
+      - name: Release build (Apple silicon and Intel)
+        run: |
+          for arch in arm64 x86_64; do
+            swift build -c release --triple "$arch-apple-macosx26.0" --scratch-path ".build/$arch"
+          done

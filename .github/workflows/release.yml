@@ -1,0 +1,62 @@
+name: Release
+
+# Push a tag like v1.1.0 with release notes in docs/releases/v1.1.0.md.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check release notes exist
+        run: test -f "docs/releases/${GITHUB_REF_NAME}.md"
+
+      # The same certificate as every earlier release, so updating keeps the Accessibility grant.
+      - name: Import signing certificate
+        env:
+          SIGNING_P12_BASE64: ${{ secrets.SIGNING_P12_BASE64 }}
+          SIGNING_P12_PASSWORD: ${{ secrets.SIGNING_P12_PASSWORD }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          echo "$SIGNING_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/signing.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 3600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/signing.p12" -k "$KEYCHAIN" -P "$SIGNING_P12_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          rm -f "$RUNNER_TEMP/signing.p12"
+          security find-identity -p codesigning "$KEYCHAIN" | grep -q "Comet Local Signing"
+
+      - name: Build the DMG, ZIP and checksums
+        working-directory: Comet 42
+        run: Scripts/release.sh "${GITHUB_REF_NAME#v}"
+
+      - name: Verify the signature
+        run: |
+          APP="Comet 42/build/Comet 42.app"
+          codesign --verify --deep --strict "$APP"
+          codesign -d -r- "$APP" 2>&1 | tail -1
+          lipo -archs "$APP/Contents/MacOS/Comet"
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          NOTES="docs/releases/${GITHUB_REF_NAME}.md"
+          TITLE="$(sed -n 's/^<!-- title: \(.*\) -->$/\1/p' "$NOTES" | head -1)"
+          gh release create "$GITHUB_REF_NAME" --verify-tag --latest \
+            --title "${TITLE:-Comet 42 ${GITHUB_REF_NAME#v}}" \
+            --notes-file "$NOTES" \
+            "Comet 42/dist/"*
+
+      - name: Remove the signing keychain
+        if: always()
+        run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true

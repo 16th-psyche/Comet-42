@@ -21,11 +21,19 @@ private final class DemoDelegate: NSObject, NSApplicationDelegate {
     private var controller: CometController!
     private var panel: CometPanelController!
     private var settingsWindow: NSWindow?
+    private var onboardingWindow: NSWindow?
 
     private static let shots = ["rewrite", "chat", "context", "search", "settings", "onboarding"]
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let shot = CommandLine.arguments.first { Self.shots.contains($0) } ?? "rewrite"
+        // Outside an app bundle the Dock icon is generic; the repo's icon stands in for it.
+        for path in ["Comet 42/Resources/AppIcon-1024.png", "Resources/AppIcon-1024.png"] {
+            if let icon = NSImage(contentsOfFile: path) {
+                NSApp.applicationIconImage = icon
+                break
+            }
+        }
         let support = FileManager.default.temporaryDirectory.appending(path: "Comet-demo")
         try? FileManager.default.removeItem(at: support)
         try? FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
@@ -56,7 +64,7 @@ private final class DemoDelegate: NSObject, NSApplicationDelegate {
         switch shot {
         case "chat": loadChat(session)
         case "context", "search": loadContext(session)
-        case "settings": break
+        case "settings", "onboarding": break
         default: loadRewrite(session)
         }
 
@@ -67,6 +75,10 @@ private final class DemoDelegate: NSObject, NSApplicationDelegate {
                 self.showSettings(settings: settings)
                 try? await Task.sleep(for: .seconds(1.5))
                 print("WINDOW \(self.settingsWindow?.windowNumber ?? 0)")
+            } else if shot == "onboarding" {
+                self.showOnboarding()
+                try? await Task.sleep(for: .seconds(1.5))
+                print("WINDOW \(self.onboardingWindow?.windowNumber ?? 0)")
             } else {
                 self.panel.show()
                 try? await Task.sleep(for: .seconds(0.8))
@@ -152,6 +164,21 @@ private final class DemoDelegate: NSObject, NSApplicationDelegate {
         window.setContentSize(NSSize(width: 900, height: 600))
         window.center()
         settingsWindow = window
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate()
+        window.makeKeyAndOrderFront(nil)
+        window.orderFrontRegardless()
+    }
+
+    private func showOnboarding() {
+        let view = OnboardingView(
+            controller: controller, hotKeys: HotKeyCenter(), applyHotKey: { true }, onFinish: { _ in })
+        let window = NSWindow(contentViewController: NSHostingController(rootView: view))
+        window.styleMask = [.titled, .closable, .fullSizeContentView]
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
+        window.center()
+        onboardingWindow = window
         NSApp.setActivationPolicy(.regular)
         NSApp.activate()
         window.makeKeyAndOrderFront(nil)

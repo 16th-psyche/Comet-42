@@ -35,11 +35,13 @@ struct OnboardingView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .padding(.horizontal, 36)
-            .padding(.top, 32)
+            .padding(.top, 44)
             Divider()
             footer
         }
         .frame(width: 600, height: 520)
+        // The title bar is transparent; its safe area would otherwise push the footer off the bottom.
+        .ignoresSafeArea()
     }
 
     // MARK: - Steps
