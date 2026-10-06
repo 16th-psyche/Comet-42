@@ -553,6 +553,7 @@ private struct TurnView: View {
     @State private var showsDiff = true
     @State private var isEditing = false
     @State private var draft = ""
+    @FocusState private var editorFocused: Bool
 
     var body: some View {
         switch turn.role {
@@ -631,6 +632,13 @@ private struct TurnView: View {
                 .accessibilityLabel(turn.isThinking ? "Thinking" : "Working")
             } else if isEditing {
                 TextEditor(text: $draft)
+                    .focused($editorFocused)
+                    // Typing goes straight into the answer, not the question box behind it. Deferred:
+                    // a field asked for focus before it is in the window keeps the old one focused.
+                    .task {
+                        try? await Task.sleep(for: .milliseconds(80))
+                        editorFocused = true
+                    }
                     .scaledFont(14)
                     .scrollContentBackground(.hidden)
                     .padding(6)

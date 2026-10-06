@@ -120,6 +120,24 @@ Codex CLI you already use, so there's no new account and no key to manage.
     </td>
   </tr>
   <tr>
+    <td width="50%" valign="top">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/search-dark.png">
+        <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/search-light.png">
+        <img src="docs/screenshots/search-light.png" width="420" alt="Typing /to in Comet 42 filters the presets list">
+      </picture>
+      <p><b>Find any preset fast.</b> Type <kbd>/</kbd> and a few letters, then press <kbd>↩</kbd>. Every preset is also one click away in the Presets menu.</p>
+    </td>
+    <td width="50%" valign="top">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/onboarding-dark.png">
+        <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/onboarding-light.png">
+        <img src="docs/screenshots/onboarding-light.png" width="420" alt="Comet 42 welcome window for first-time setup">
+      </picture>
+      <p><b>Set up in a minute.</b> A short welcome guide checks your AI tools, Accessibility permission and shortcut.</p>
+    </td>
+  </tr>
+  <tr>
     <td colspan="2" valign="top">
       <picture>
         <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/settings-dark.png">
