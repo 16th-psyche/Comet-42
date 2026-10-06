@@ -1,0 +1,71 @@
+#!/bin/zsh
+# Builds "Comet 42.app" from the Swift package. Usage: Scripts/build-app.sh [--install]
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+ROOT=$(pwd)
+APP="$ROOT/build/Comet 42.app"
+
+swift build -c release
+BIN="$(swift build -c release --show-bin-path)/Comet"
+
+rm -rf "$APP"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+cp "$BIN" "$APP/Contents/MacOS/Comet"
+
+# The icon is drawn in code; regenerate the PNG only when the drawing script changes.
+ICON_PNG="$ROOT/Resources/AppIcon-1024.png"
+if [[ ! -f "$ICON_PNG" || "$ROOT/Scripts/make-icon.swift" -nt "$ICON_PNG" ]]; then
+    mkdir -p "$ROOT/Resources"
+    swift "$ROOT/Scripts/make-icon.swift" "$ICON_PNG"
+fi
+ICONSET="$ROOT/build/AppIcon.iconset"
+rm -rf "$ICONSET" && mkdir -p "$ICONSET"
+for px in 16 32 128 256 512; do
+    sips -z $px $px "$ICON_PNG" --out "$ICONSET/icon_${px}x${px}.png" >/dev/null
+    sips -z $((px * 2)) $((px * 2)) "$ICON_PNG" --out "$ICONSET/icon_${px}x${px}@2x.png" >/dev/null
+done
+iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
+
+cat > "$APP/Contents/Info.plist" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key><string>Comet 42</string>
+    <key>CFBundleDisplayName</key><string>Comet 42</string>
+    <key>CFBundleIdentifier</key><string>in.quantumleap.comet</string>
+    <key>CFBundleExecutable</key><string>Comet</string>
+    <key>CFBundleIconFile</key><string>AppIcon</string>
+    <key>CFBundlePackageType</key><string>APPL</string>
+    <key>CFBundleShortVersionString</key><string>1.0</string>
+    <key>CFBundleVersion</key><string>1</string>
+    <key>LSMinimumSystemVersion</key><string>26.0</string>
+    <key>LSUIElement</key><true/>
+    <key>NSHighResolutionCapable</key><true/>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>Comet 42 reads the text you select and pastes results back into the app you were using.</string>
+</dict>
+</plist>
+PLIST
+
+# A real (self-signed) identity keeps the Accessibility grant across rebuilds; ad hoc does not.
+IDENTITY=$(security find-identity -p codesigning 2>/dev/null \
+    | awk '/"Comet Local Signing"/ {print $2; exit}')
+if [[ -n "$IDENTITY" ]]; then
+    codesign --force --deep --sign "$IDENTITY" --identifier in.quantumleap.comet "$APP"
+    echo "Signed with Comet Local Signing"
+else
+    codesign --force --deep --sign - --identifier in.quantumleap.comet "$APP"
+    echo "Signed ad hoc: re-grant Accessibility after every rebuild"
+fi
+echo "Built $APP"
+
+if [[ "${1:-}" == "--install" ]]; then
+    mkdir -p "$HOME/Applications"
+    pkill -x Comet 2>/dev/null || true
+    # The bundle was "Comet.app" before the rename; never leave two copies installed.
+    rm -rf "$HOME/Applications/Comet.app" "$HOME/Applications/Comet 42.app"
+    cp -R "$APP" "$HOME/Applications/Comet 42.app"
+    echo "Installed to ~/Applications/Comet 42.app"
+fi
