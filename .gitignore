@@ -17,3 +17,6 @@ xcuserdata/
 *.p12
 *.pem
 *.cer
+
+# Release output (Scripts/release.sh)
+Comet 42/dist/

@@ -148,7 +148,22 @@ your text and images only.
 
 ## Install
 
-Comet 42 is built from source. Setup takes about five minutes the first time.
+### Download (easiest)
+
+Get **Comet-42-…-macOS-universal.dmg** from the
+[latest release](https://github.com/16th-psyche/Comet-42/releases/latest), open it, and drag
+**Comet 42** into **Applications**. It runs on Apple silicon and Intel Macs.
+
+> [!IMPORTANT]
+> Comet 42 isn't notarized by Apple yet. The first time you open it, macOS blocks it. Go to
+> **System Settings → Privacy & Security** and click **Open Anyway**, or run
+> `xattr -dr com.apple.quarantine "/Applications/Comet 42.app"`.
+
+Then do steps **2**, **4** and **5** below: install a CLI, allow Accessibility, and check the CLIs.
+
+### Build from source
+
+Setup takes about five minutes the first time.
 
 **1. Install Apple's command-line tools** (skip this if `swift --version` already works):
 
