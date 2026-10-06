@@ -12,7 +12,7 @@ final class CometController {
     private(set) var isCapturing = false
     /// A one-line message under the composer, for problems that are not one turn's failure.
     var notice: String?
-    /// Polled, because macOS posts nothing when the reader grants the permission.
+    /// Polled only while missing: macOS posts nothing when the reader grants the permission.
     private(set) var accessibilityTrusted = Permissions.isAccessibilityTrusted
     @ObservationIgnored private var trustTimer: Timer?
 
@@ -54,13 +54,30 @@ final class CometController {
         self.watcher = watcher
         self.hud = hud
         session = CometSession(model: settings.chatModel)
-        trustTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                let trusted = Permissions.isAccessibilityTrusted
-                if trusted != self.accessibilityTrusted { self.accessibilityTrusted = trusted }
-            }
+        refreshAccessibilityTrust()
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshAccessibilityTrust() }
         }
+    }
+
+    /// Re-reads the permission, and polls only until it is granted: an idle timer costs battery.
+    func refreshAccessibilityTrust() {
+        let trusted = Permissions.isAccessibilityTrusted
+        if trusted != accessibilityTrusted { accessibilityTrusted = trusted }
+        guard !trusted else {
+            trustTimer?.invalidate()
+            trustTimer = nil
+            return
+        }
+        guard trustTimer == nil else { return }
+        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshAccessibilityTrust() }
+        }
+        timer.tolerance = 0.5
+        RunLoop.main.add(timer, forMode: .common)
+        trustTimer = timer
     }
 
     // MARK: - Summoning
@@ -98,6 +115,7 @@ final class CometController {
             startNewChat()
         }
         if !isOwnApp, let front { session.sourceApp = front }
+        refreshAccessibilityTrust()
         if let selection { session.setSelection(selection) }
         stage(clipboardImage, fresh: imageIsFresh)
         session.lastActivity = Date()

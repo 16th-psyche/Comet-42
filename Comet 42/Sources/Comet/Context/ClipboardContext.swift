@@ -12,10 +12,14 @@ final class ClipboardWatcher {
     /// How long a copied picture counts as "just taken" and is attached without asking.
     static let freshness: TimeInterval = 120
 
+    /// Once a second, with slack so macOS can batch the wake-up with others; freshness is minutes.
     func start() {
-        timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.poll() }
         }
+        timer.tolerance = 0.5
+        RunLoop.main.add(timer, forMode: .common)
+        self.timer = timer
     }
 
     private func poll() {
