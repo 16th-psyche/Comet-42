@@ -101,7 +101,11 @@ final class AppSettings {
 
     var effortValue: String? { effort.isEmpty ? nil : effort }
 
+    /// Off for the demo mode, so sample shots never overwrite the reader's preferences.
+    @ObservationIgnored var persists = true
+
     private func save() {
+        guard persists else { return }
         var stored = Stored()
         stored.hotKey = hotKey
         stored.chatModel = chatModel

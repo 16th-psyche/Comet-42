@@ -10,6 +10,10 @@ enum CometApp {
             print(String(decoding: try! encoder.encode(Preset.builtIns), as: UTF8.self))
             return
         }
+        if CommandLine.arguments.contains("--demo") {
+            DemoMode.run()
+            return
+        }
         if CommandLine.arguments.contains("--selftest") {
             SelfTest.run()
             return

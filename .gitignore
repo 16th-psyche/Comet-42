@@ -1,10 +1,10 @@
 # Swift Package Manager
-Comet/.build/
-Comet/.swiftpm/
-Comet/Package.resolved
+Comet 42/.build/
+Comet 42/.swiftpm/
+Comet 42/Package.resolved
 
 # Packaged app and icon set (Scripts/build-app.sh output)
-Comet/build/
+Comet 42/build/
 
 # Editors and macOS
 .DS_Store

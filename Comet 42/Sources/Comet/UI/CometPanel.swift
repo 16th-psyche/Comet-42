@@ -43,6 +43,7 @@ final class CometPanelController: NSObject, NSWindowDelegate {
     }
 
     var isVisible: Bool { panel.isVisible }
+    var windowNumber: Int { panel.windowNumber }
 
     func show() {
         if !panel.isVisible { place() }

@@ -372,6 +372,12 @@ final class CometController {
         AccessibilityNotification.Announcement(announcement).post()
     }
 
+    /// Demo mode only: a conversation that began from `selection`, as if the reader had summoned it.
+    func loadDemo(selection: String?) {
+        conversationSelection = selection
+        accessibilityTrusted = true
+    }
+
     func resetPanelGeometry() {
         panel?.resetGeometry()
     }
